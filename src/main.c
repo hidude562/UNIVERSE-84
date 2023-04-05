@@ -27,13 +27,14 @@
 #include <graphx.h>
 #include <keypadc.h>
 
-#define num_bodies 3
+#define num_bodies 2
 #define SCREEN_X 320
 #define SCREEN_Y 240
 
 void controls();
+void calculateAllBodyPhysics();
 
-uint16_t timeStep = 10;
+uint64_t timeStep = 360000;
 
 // Distance is in KM
 // Mass is Metric Tonnes
@@ -41,7 +42,7 @@ uint16_t timeStep = 10;
 // Velocity is m/s
 
 
-// This is all in KM
+// This is all in km
 int64_t camX = 0;
 int64_t camY = 0;
 int64_t camZoom = 1000;
@@ -49,15 +50,17 @@ bool    correctSizedBodies = true;
 
 
 struct body {
-    // In metric tonnes
-    int mass;
-    int atmosphereMass;
+    // In metric tonnes, 10 quadrillion  = 1 num
+    uint64_t mass;
+    uint64_t atmosphereMass;
     int radius;
     int magFieldStrength;
     int surfaceTemperature;
     int coreTemperature;
-    int velocityX;
-    int velocityY;
+
+    // In km/h
+    int64_t velocityX;
+    int64_t velocityY;
     int64_t x;
     int64_t y;
 };
@@ -70,12 +73,24 @@ void end(void);
 bool step(void);
 void draw(void);
 
+void newDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy) {
+    // Mars-like planet
+    bodies[i].mass = 63900;
+    bodies[i].x = x;
+    bodies[i].y = y;
+    bodies[i].velocityX = vx;
+    bodies[i].velocityY = vy;
+}
+
 int main(void)
 {
-    bool partial_redraw = false;
+    bool partial_redraw = true;
 
     /* No rendering allowed! */
     begin();
+
+    newDefaultPlanet(0, 0, 0, 0, 0);
+    newDefaultPlanet(1, 0, -20000, 1, 0);
 
     /* Initialize graphics drawing */
     gfx_Begin();
@@ -94,6 +109,7 @@ int main(void)
         }
 
         /* As little non-rendering logic as possible */
+        calculateAllBodyPhysics();
         draw();
         controls();
 
@@ -106,6 +122,21 @@ int main(void)
     end();
 
     return 0;
+}
+
+void moveBody(int i) {
+    bodies[i].x += bodies[i].velocityX * timeStep / 3600;
+    bodies[i].y += bodies[i].velocityY * timeStep / 3600;
+}
+
+void gravity(int i) {
+
+}
+
+void calculateAllBodyPhysics() {
+    for(int i = 0; i < num_bodies; i++) {
+        moveBody(i);
+    }
 }
 
 /* Implement me! */
@@ -128,16 +159,16 @@ void controls() {
         camZoom += (camZoom / 10);
     }
     if (kb_Data[7] & kb_Right) {
-        camX += (camZoom * 10);
+        camX += (camZoom / 40);
     }
     if (kb_Data[7] & kb_Left) {
-        camX -= (camZoom * 10);
+        camX -= (camZoom / 40);
     }
     if (kb_Data[7] & kb_Up) {
-        camY += (camZoom * 10);
+        camY += (camZoom / 40);
     }
     if (kb_Data[7] & kb_Down) {
-        camY -= (camZoom * 10);
+        camY -= (camZoom / 40);
     }
 }
 
@@ -153,17 +184,20 @@ void draw_planet(uint16_t i) {
     if(correctSizedBodies) {
         drawSize = 1000 * SCREEN_X / camZoom;
         if(drawSize < 2) {
-            drawSize =2;
+            drawSize =1;
         }
     }
-    gfx_FillCircle((bodies[i].x - camX) / camZoom + 160, (camY - bodies[i].y) / camZoom + 120, drawSize);
+    gfx_FillCircle((bodies[i].x - camX) * SCREEN_X / camZoom + 160, (camY - bodies[i].y) * SCREEN_X / camZoom + 120, drawSize);
 }
 
 void gui() {
     gfx_SetTextFGColor(254);
     gfx_SetTextXY(0, 0);
     gfx_PrintInt(camZoom, 2);
-    gfx_PrintString(" KM");
+    gfx_PrintString(" KM    ");
+
+    gfx_PrintInt(timeStep, 2);
+    gfx_PrintString("x");
 }
 
 void draw(void)
