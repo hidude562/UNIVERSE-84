@@ -34,7 +34,7 @@
 void controls();
 void calculateAllBodyPhysics();
 
-uint64_t timeStep = 360000;
+uint64_t timeStep = 3600;
 
 // Distance is in KM
 // Mass is Metric Tonnes
@@ -45,7 +45,7 @@ uint64_t timeStep = 360000;
 // This is all in km
 int64_t camX = 0;
 int64_t camY = 0;
-int64_t camZoom = 1000;
+int64_t camZoom = 100000;
 bool    correctSizedBodies = true;
 
 
@@ -66,6 +66,7 @@ struct body {
 };
 
 struct body bodies[num_bodies];
+struct body tempBodies[num_bodies];
 
 
 void begin(void);
@@ -73,9 +74,28 @@ void end(void);
 bool step(void);
 void draw(void);
 
-void newDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy) {
+int64_t fastSqrt64(int64_t n) {
+    // Preform binary search to find sqrt
+    int64_t val = n / 2;
+    int64_t iter = n / 2;
+
+    while(iter > 1) {
+        iter/=2;
+        int64_t squared = val * val;
+        if(squared > n) {
+            val-=iter;
+        } else if(squared < n) {
+            val+=iter;
+        } else {
+            return val;
+        }
+    }
+    return val;
+}
+
+void newDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass) {
     // Mars-like planet
-    bodies[i].mass = 63900;
+    bodies[i].mass = mass;
     bodies[i].x = x;
     bodies[i].y = y;
     bodies[i].velocityX = vx;
@@ -84,13 +104,13 @@ void newDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy) 
 
 int main(void)
 {
-    bool partial_redraw = true;
+    bool partial_redraw = false;
 
     /* No rendering allowed! */
     begin();
 
-    newDefaultPlanet(0, 0, 0, 0, 0);
-    newDefaultPlanet(1, 0, -20000, 1, 0);
+    newDefaultPlanet(0, 0, 0, 0, 0, 1000);
+    newDefaultPlanet(1, 0, -20000, 2000, 0, 100);
 
     /* Initialize graphics drawing */
     gfx_Begin();
@@ -125,17 +145,37 @@ int main(void)
 }
 
 void moveBody(int i) {
-    bodies[i].x += bodies[i].velocityX * timeStep / 3600;
-    bodies[i].y += bodies[i].velocityY * timeStep / 3600;
+    bodies[i].x += bodies[i].velocityX * (timeStep / 3600);
+    bodies[i].y += bodies[i].velocityY * (timeStep / 3600);
 }
 
 void gravity(int i) {
+    for(int j = 0; j < num_bodies; j++) {
+        if(j != i) {
+            //TODO: implement inverse square law
+            int64_t deltaX = bodies[j].x - bodies[i].x;
+            int64_t deltaY = bodies[j].y - bodies[i].y;
+            int64_t dist   = fastSqrt64((deltaX * deltaX) + (deltaY * deltaY));
 
+            int64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
+            int64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
+
+            gfx_PrintInt(dist, 2);
+            gfx_PrintString(" ");
+            bodies[i].velocityX += gravityX / 10;
+            bodies[i].velocityY += gravityY / 10;
+
+        }
+    }
 }
 
 void calculateAllBodyPhysics() {
     for(int i = 0; i < num_bodies; i++) {
         moveBody(i);
+
+        // Really bad efficiency since this doesn't just check the parent for gravity
+        // O(n^2 - n) efficiency
+        gravity(i);
     }
 }
 
@@ -180,13 +220,14 @@ bool step(void)
 
 void draw_planet(uint16_t i) {
     gfx_SetColor(193);
-    uint16_t drawSize = 10;
+    int drawSize = 10;
     if(correctSizedBodies) {
         drawSize = 1000 * SCREEN_X / camZoom;
         if(drawSize < 2) {
             drawSize =1;
         }
     }
+    //gfx_FillCircle(150, 150, drawSize);
     gfx_FillCircle((bodies[i].x - camX) * SCREEN_X / camZoom + 160, (camY - bodies[i].y) * SCREEN_X / camZoom + 120, drawSize);
 }
 
@@ -198,6 +239,14 @@ void gui() {
 
     gfx_PrintInt(timeStep, 2);
     gfx_PrintString("x");
+
+    // i is the current object
+    int i = 0;
+
+    // j is the object the current object is reacting to
+    int j = 1;
+
+    //gfx_PrintInt(gravityX, 2);
 }
 
 void draw(void)
