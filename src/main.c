@@ -26,13 +26,18 @@
 #include <string.h>
 #include <graphx.h>
 #include <keypadc.h>
+#include <usbdrvce.h>
 
-#define num_bodies 2
+#define num_bodies 5
 #define SCREEN_X 320
 #define SCREEN_Y 240
 
 void controls();
 void calculateAllBodyPhysics();
+
+
+bool prevDecPoint;
+bool prevChs;
 
 uint64_t timeStep = 3600;
 
@@ -47,7 +52,7 @@ int64_t camX = 0;
 int64_t camY = 0;
 int64_t camZoom = 100000;
 bool    correctSizedBodies = true;
-
+uint16_t selectedPlanet = -1;
 
 struct body {
     // In metric tonnes, 10 quadrillion  = 1 num
@@ -74,27 +79,49 @@ void end(void);
 bool step(void);
 void draw(void);
 
-int64_t fastSqrt64(int64_t n) {
-    // Preform binary search to find sqrt
-    int64_t val = n / 2;
-    int64_t iter = n / 2;
 
-    while(iter > 1) {
-        iter/=2;
-        int64_t squared = val * val;
-        if(squared > n) {
-            val-=iter;
-        } else if(squared < n) {
-            val+=iter;
-        } else {
-            return val;
-        }
-    }
-    return val;
+
+
+// Source for these algorithms
+// https://stackoverflow.com/questions/34187171/fast-integer-square-root-approximation
+
+
+// this function computes a lower bound
+uint_fast8_t bit_width(int_fast64_t x) {
+    return x == 0 ? 1 : 64 - __builtin_clzll(x);
 }
 
-void newDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass) {
+int_fast64_t fastestSqrt64(const int_fast64_t n)
+{
+    // This will be probably up to 1% off or something
+    int_fast64_t log2floor = bit_width(n) - 1;
+    int_fast64_t a = (int_fast64_t) (n != 0) << (log2floor >> 1);
+    int_fast64_t b;
+
+    b = n / a; a = (a+b) / 2;
+    b = n / a; a = (a+b) / 2;
+    return a;
+}
+
+// Only use this for testing
+int_fast64_t fastSqrt64(int_fast64_t n) {
+    // This will be probably up to 1% off or something
+    int_fast64_t log2floor = bit_width(n) - 1;
+    int_fast64_t a = (int_fast64_t) (n != 0) << (log2floor >> 1);
+    int_fast64_t b;
+
+    b = n / a; a = (a+b) / 2;
+    b = n / a; a = (a+b) / 2;
+    
+    // Preform a couple extra iterations of the newton method for extra precision
+    b = n / a; a = (a+b) / 2;
+    b = n / a; a = (a+b) / 2;
+    return a;
+}
+
+void setDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius) {
     // Mars-like planet
+    bodies[i].radius = radius;
     bodies[i].mass = mass;
     bodies[i].x = x;
     bodies[i].y = y;
@@ -102,15 +129,26 @@ void newDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, 
     bodies[i].velocityY = vy;
 }
 
+void cameraOnPlanet(uint16_t planet) {
+    camX = bodies[planet].x;
+    camY = bodies[planet].y;
+}
+
 int main(void)
 {
-    bool partial_redraw = false;
+    bool partial_redraw = true;
 
     /* No rendering allowed! */
     begin();
 
-    newDefaultPlanet(0, 0, 0, 0, 0, 1000);
-    newDefaultPlanet(1, 0, -20000, 2000, 0, 100);
+    //setDefaultPlanet(0, 0, 0,      200, 0, 500, 3000);
+    //setDefaultPlanet(1, 0, -20000, 0, 0, 500, 2000);
+
+    setDefaultPlanet(0, 0, 0,      2000, 0, 1000, 3000);
+    setDefaultPlanet(1, 0, -20000, 1000, 0, 500, 2000);
+    setDefaultPlanet(2, 0, -100000, 0, 0, 500, 20000);
+    setDefaultPlanet(3, 0, -40000, 1500, 0, 500, 200);
+    setDefaultPlanet(4, 0, -600000, 500, 0, 500, 20000);
 
     /* Initialize graphics drawing */
     gfx_Begin();
@@ -132,6 +170,7 @@ int main(void)
         calculateAllBodyPhysics();
         draw();
         controls();
+        //cameraOnPlanet(selectedPlanet);
 
         /* Queue the buffered frame to be displayed */
         gfx_SwapDraw();
@@ -145,25 +184,22 @@ int main(void)
 }
 
 void moveBody(int i) {
-    bodies[i].x += bodies[i].velocityX * (timeStep / 3600);
-    bodies[i].y += bodies[i].velocityY * (timeStep / 3600);
+    bodies[i].x += bodies[i].velocityX * (timeStep * 1 / 3600) / 1;
+    bodies[i].y += bodies[i].velocityY * (timeStep * 1 / 3600) / 1;
 }
 
 void gravity(int i) {
     for(int j = 0; j < num_bodies; j++) {
         if(j != i) {
             //TODO: implement inverse square law
-            int64_t deltaX = bodies[j].x - bodies[i].x;
-            int64_t deltaY = bodies[j].y - bodies[i].y;
-            int64_t dist   = fastSqrt64((deltaX * deltaX) + (deltaY * deltaY));
+            int_fast64_t deltaX = bodies[j].x - bodies[i].x;
+            int_fast64_t deltaY = bodies[j].y - bodies[i].y;
+            int_fast64_t dist   = fastSqrt64((deltaX * deltaX) + (deltaY * deltaY));
 
-            int64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
-            int64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
-
-            gfx_PrintInt(dist, 2);
-            gfx_PrintString(" ");
-            bodies[i].velocityX += gravityX / 10;
-            bodies[i].velocityY += gravityY / 10;
+            int_fast64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
+            int_fast64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
+            bodies[i].velocityX += gravityX / 10;//(timeStep / 10);
+            bodies[i].velocityY += gravityY / 10;//(timeStep / 10);
 
         }
     }
@@ -195,7 +231,7 @@ void controls() {
     if (kb_Data[1] & kb_2nd) {
         camZoom -= (camZoom / 10);
     }
-    if (kb_Data[1] & kb_Alpha) {
+    if (kb_Data[2] & kb_IsDown(kb_Alpha)) {
         camZoom += (camZoom / 10);
     }
     if (kb_Data[7] & kb_Right) {
@@ -210,6 +246,17 @@ void controls() {
     if (kb_Data[7] & kb_Down) {
         camY -= (camZoom / 40);
     }
+    if(kb_Data[6] & kb_Enter) {
+        selectedPlanet = ((selectedPlanet + 1) % (num_bodies + 1) - 1);
+    }
+    if((kb_Data[4] & kb_DecPnt) && !prevDecPoint) {
+        timeStep*=2;
+        prevDecPoint = true;
+    } else {prevDecPoint = false;}
+    if((kb_Data[5] & kb_Chs) && !prevChs) {
+        timeStep/=2;
+        prevChs = true;
+    } else {prevChs = false;}
 }
 
 /* Implement me! */
@@ -222,7 +269,7 @@ void draw_planet(uint16_t i) {
     gfx_SetColor(193);
     int drawSize = 10;
     if(correctSizedBodies) {
-        drawSize = 1000 * SCREEN_X / camZoom;
+        drawSize = bodies[i].radius * SCREEN_X / camZoom;
         if(drawSize < 2) {
             drawSize =1;
         }
@@ -238,15 +285,8 @@ void gui() {
     gfx_PrintString(" KM    ");
 
     gfx_PrintInt(timeStep, 2);
-    gfx_PrintString("x");
+    gfx_PrintString("x ");
 
-    // i is the current object
-    int i = 0;
-
-    // j is the object the current object is reacting to
-    int j = 1;
-
-    //gfx_PrintInt(gravityX, 2);
 }
 
 void draw(void)
