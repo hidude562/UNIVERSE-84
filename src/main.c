@@ -28,7 +28,7 @@
 #include <keypadc.h>
 #include <usbdrvce.h>
 
-#define num_bodies 5
+#define num_bodies 2
 #define SCREEN_X 320
 #define SCREEN_Y 240
 
@@ -71,7 +71,6 @@ struct body {
 };
 
 struct body bodies[num_bodies];
-struct body tempBodies[num_bodies];
 
 
 void begin(void);
@@ -112,7 +111,7 @@ int_fast64_t fastSqrt64(int_fast64_t n) {
 
     b = n / a; a = (a+b) / 2;
     b = n / a; a = (a+b) / 2;
-    
+
     // Preform a couple extra iterations of the newton method for extra precision
     b = n / a; a = (a+b) / 2;
     b = n / a; a = (a+b) / 2;
@@ -144,11 +143,8 @@ int main(void)
     //setDefaultPlanet(0, 0, 0,      200, 0, 500, 3000);
     //setDefaultPlanet(1, 0, -20000, 0, 0, 500, 2000);
 
-    setDefaultPlanet(0, 0, 0,      2000, 0, 1000, 3000);
-    setDefaultPlanet(1, 0, -20000, 1000, 0, 500, 2000);
-    setDefaultPlanet(2, 0, -100000, 0, 0, 500, 20000);
-    setDefaultPlanet(3, 0, -40000, 1500, 0, 500, 200);
-    setDefaultPlanet(4, 0, -600000, 500, 0, 500, 20000);
+    setDefaultPlanet(0, 0, 0,      0, 0, 500, 3000);
+    setDefaultPlanet(1, 0, -20000, 1000, 0, 100, 2000);
 
     /* Initialize graphics drawing */
     gfx_Begin();
@@ -194,12 +190,16 @@ void gravity(int i) {
             //TODO: implement inverse square law
             int_fast64_t deltaX = bodies[j].x - bodies[i].x;
             int_fast64_t deltaY = bodies[j].y - bodies[i].y;
-            int_fast64_t dist   = fastSqrt64((deltaX * deltaX) + (deltaY * deltaY));
+            int_fast64_t squaredDist = (deltaX * deltaX) + (deltaY * deltaY);
+            int_fast64_t dist   = fastestSqrt64(squaredDist);
 
             int_fast64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
             int_fast64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
-            bodies[i].velocityX += gravityX / 10;//(timeStep / 10);
-            bodies[i].velocityY += gravityY / 10;//(timeStep / 10);
+
+            gravityX*=(timeStep / 3600);
+            gravityY*=(timeStep / 3600);
+            bodies[i].velocityX += gravityX / (squaredDist / 40000000);//(timeStep / 10);  bodies[j].mass /
+            bodies[i].velocityY += gravityY / (squaredDist / 40000000);//(timeStep / 10);
 
         }
     }
@@ -207,11 +207,13 @@ void gravity(int i) {
 
 void calculateAllBodyPhysics() {
     for(int i = 0; i < num_bodies; i++) {
-        moveBody(i);
-
         // Really bad efficiency since this doesn't just check the parent for gravity
         // O(n^2 - n) efficiency
         gravity(i);
+    }
+
+    for(int i = 0; i < num_bodies; i++) {
+        moveBody(i);
     }
 }
 
@@ -228,10 +230,12 @@ void end(void)
 }
 
 void controls() {
+    kb_Scan();
+
     if (kb_Data[1] & kb_2nd) {
         camZoom -= (camZoom / 10);
     }
-    if (kb_Data[2] & kb_IsDown(kb_Alpha)) {
+    if (kb_Data[2] & kb_Alpha) {
         camZoom += (camZoom / 10);
     }
     if (kb_Data[7] & kb_Right) {
@@ -246,15 +250,14 @@ void controls() {
     if (kb_Data[7] & kb_Down) {
         camY -= (camZoom / 40);
     }
-    if(kb_Data[6] & kb_Enter) {
-        selectedPlanet = ((selectedPlanet + 1) % (num_bodies + 1) - 1);
-    }
-    if((kb_Data[4] & kb_DecPnt) && !prevDecPoint) {
-        timeStep*=2;
+    if((kb_Data[4] & kb_DecPnt)) {
+        if(!prevDecPoint)
+            timeStep*=2;
         prevDecPoint = true;
     } else {prevDecPoint = false;}
-    if((kb_Data[5] & kb_Chs) && !prevChs) {
-        timeStep/=2;
+    if((kb_Data[5] & kb_Chs)) {
+        if(!prevChs && timeStep > 3600)
+            timeStep/=2;
         prevChs = true;
     } else {prevChs = false;}
 }
