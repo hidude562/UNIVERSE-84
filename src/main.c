@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <tice.h>
+#include <time.h>
 
 /* Here are some standard headers. Take a look at the toolchain for more. */
 #include <math.h>
@@ -28,7 +29,7 @@
 #include <keypadc.h>
 #include <usbdrvce.h>
 
-#define num_bodies 2
+#define num_bodies 3
 #define SCREEN_X 320
 #define SCREEN_Y 240
 
@@ -38,30 +39,47 @@ void calculateAllBodyPhysics();
 
 bool prevDecPoint;
 bool prevChs;
+bool prevEnter;
 
 uint64_t timeStep = 3600;
 
 // Distance is in KM
 // Mass is Metric Tonnes
 // Temperatature is in kelvin
-// Velocity is m/s
 
 
 // This is all in km
 int64_t camX = 0;
 int64_t camY = 0;
+
+
+int64_t camX2 = 0;
+int64_t camY2 = 0;
+
 int64_t camZoom = 100000;
 bool    correctSizedBodies = true;
-uint16_t selectedPlanet = -1;
+uint16_t selectedPlanet = 0;
 
 struct body {
-    // In metric tonnes, 10 quadrillion  = 1 num
+    // Mass isn't really a specific unit but the weight of the earth is about 130,000
+    // To convert from kg to this unit, divide by 46,000,000,000,000,000,000
+    char* name;
+    char* desc;
+
     uint64_t mass;
-    uint64_t atmosphereMass;
-    int radius;
+
+
+    // 1000 = 1kg per cubic meter
+    uint32_t atmosphereDensity;
+    int64_t radius;
     int magFieldStrength;
+    int64_t area;
+
+    // Kelvin
     int surfaceTemperature;
-    int coreTemperature;
+    int surfaceStabilizeTemperature;
+
+    int64_t coreTemperature;
 
     // In km/h
     int64_t velocityX;
@@ -118,33 +136,82 @@ int_fast64_t fastSqrt64(int_fast64_t n) {
     return a;
 }
 
-void setDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius) {
+char* getRandomName() {
+
+    const char* vowels[8] = {"a", "ar", "oo", "o", "u", "e", "ea", "i"};
+    const char* consonants[8] = {"b", "c", "n", "p", "k", "d", "t", "v"};
+    char* newName = "";
+
+    for(int i = 0; i < rand() % 5 + 2; i++) {
+        if(i % 2 == 0) {
+            strcat(newName, vowels[rand() % 8]);
+        } else {
+            strcat(newName, consonants[rand() % 8]);
+        }
+    }
+
+    return newName;
+}
+
+
+void setAdvancedPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius, char* name, int32_t coreTemperature, uint32_t atmosphereDensity) {
     // Mars-like planet
+    bodies[i].name = name;
+    bodies[i].desc = "A description.....";
     bodies[i].radius = radius;
     bodies[i].mass = mass;
     bodies[i].x = x;
     bodies[i].y = y;
     bodies[i].velocityX = vx;
     bodies[i].velocityY = vy;
+
+    bodies[i].surfaceTemperature = 288;
+    bodies[i].coreTemperature = coreTemperature;
+    bodies[i].atmosphereDensity = atmosphereDensity;
+}
+
+void setDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius) {
+    // Mars-like planet
+    bodies[i].name = getRandomName();
+    bodies[i].desc = "A description.....";
+    bodies[i].radius = radius;
+    bodies[i].mass = mass;
+    bodies[i].x = x;
+    bodies[i].y = y;
+    bodies[i].velocityX = vx;
+    bodies[i].velocityY = vy;
+    bodies[i].surfaceTemperature = 288;
+    bodies[i].coreTemperature = 1590;
+    bodies[i].atmosphereDensity = 100;
 }
 
 void cameraOnPlanet(uint16_t planet) {
-    camX = bodies[planet].x;
-    camY = bodies[planet].y;
+    camX2 = bodies[planet].x;
+    camY2 = bodies[planet].y;
 }
 
 int main(void)
 {
+    srand(time(NULL));
     bool partial_redraw = true;
 
     /* No rendering allowed! */
     begin();
 
-    //setDefaultPlanet(0, 0, 0,      200, 0, 500, 3000);
-    //setDefaultPlanet(1, 0, -20000, 0, 0, 500, 2000);
 
-    setDefaultPlanet(0, 0, 0,      0, 0, 500, 3000);
-    setDefaultPlanet(1, 0, -20000, 1000, 0, 100, 2000);
+    /*
+    // Earth Moon orbit
+
+    setDefaultPlanet(0, 0, 0,      0, 0, 130000, 6378);
+    setDefaultPlanet(1, 0, -384400, 3683, 0, 100, 1079);
+    */
+
+
+    setDefaultPlanet(0, 0, 0,      107826, 0, 130000, 6378);
+    setDefaultPlanet(1, 0, -384400,107826 + 3683, 0, 1600, 1079);
+    setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0);
+
+    //4324000000
 
     /* Initialize graphics drawing */
     gfx_Begin();
@@ -164,9 +231,9 @@ int main(void)
 
         /* As little non-rendering logic as possible */
         calculateAllBodyPhysics();
+        cameraOnPlanet(selectedPlanet);
         draw();
         controls();
-        //cameraOnPlanet(selectedPlanet);
 
         /* Queue the buffered frame to be displayed */
         gfx_SwapDraw();
@@ -205,10 +272,27 @@ void gravity(int i) {
     }
 }
 
+void updateAreaOfBody(int index) {
+    bodies[index].area = 4 * 3 * bodies[index].radius * bodies[index].radius;
+}
+
+
+void calculateStabilizingTemperature(uint16_t index) {
+    // Note that planets with larger atmospheres should take longer to diverge to the atmoshere
+    updateAreaOfBody(index);
+    bodies[index].surfaceStabilizeTemperature = bodies[index].coreTemperature * 1000000 / (bodies[index].area / 100); // (bodies[index].area / 10);
+    /*for(int j = 0; j < num_bodies; j++) {
+        if(j != i) {
+
+        }
+    }*/
+}
+
 void calculateAllBodyPhysics() {
     for(int i = 0; i < num_bodies; i++) {
         // Really bad efficiency since this doesn't just check the parent for gravity
         // O(n^2 - n) efficiency
+        calculateStabilizingTemperature(i);
         gravity(i);
     }
 
@@ -260,6 +344,15 @@ void controls() {
             timeStep/=2;
         prevChs = true;
     } else {prevChs = false;}
+
+    if((kb_Data[6] & kb_Enter)) {
+        if(!prevEnter) {
+            selectedPlanet=(selectedPlanet + 1) % num_bodies;
+            camX = 0;
+            camY = 0;
+        }
+        prevEnter = true;
+    } else {prevEnter = false;}
 }
 
 /* Implement me! */
@@ -278,7 +371,27 @@ void draw_planet(uint16_t i) {
         }
     }
     //gfx_FillCircle(150, 150, drawSize);
-    gfx_FillCircle((bodies[i].x - camX) * SCREEN_X / camZoom + 160, (camY - bodies[i].y) * SCREEN_X / camZoom + 120, drawSize);
+    gfx_FillCircle((bodies[i].x - camX - camX2) * SCREEN_X / camZoom + 160, (camY + camY2 - bodies[i].y) * SCREEN_X / camZoom + 120, drawSize);
+}
+
+void planetInfo() {
+    gfx_SetColor(0);
+    //gfx_FillRectangle(SCREEN_X - 80, 0, 80, 240);
+    gfx_SetTextXY(SCREEN_X - 80, 0);
+
+    gfx_PrintString(bodies[selectedPlanet].name);
+
+    gfx_SetTextXY(SCREEN_X - 80, 20);
+
+    gfx_PrintString("R:");
+    gfx_PrintUInt(bodies[selectedPlanet].radius, 1);
+    gfx_PrintString("km");
+
+    gfx_SetTextXY(SCREEN_X - 80, 30);
+
+    gfx_PrintString("T:");
+    gfx_PrintUInt(bodies[selectedPlanet].surfaceStabilizeTemperature, 1);
+    gfx_PrintString("C");
 }
 
 void gui() {
@@ -290,6 +403,7 @@ void gui() {
     gfx_PrintInt(timeStep, 2);
     gfx_PrintString("x ");
 
+    planetInfo();
 }
 
 void draw(void)
