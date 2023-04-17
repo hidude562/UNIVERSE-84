@@ -59,6 +59,7 @@ int64_t camY2 = 0;
 int64_t camZoom = 100000;
 bool    correctSizedBodies = true;
 uint16_t selectedPlanet = 0;
+clock_t beginFrame;
 
 struct body {
     // Mass isn't really a specific unit but the weight of the earth is about 130,000
@@ -76,8 +77,11 @@ struct body {
     int64_t area;
 
     // Kelvin
-    int surfaceTemperature;
-    int surfaceStabilizeTemperature;
+    int64_t surfaceTemperature;
+
+    // Surface temp and area combined
+    int64_t brightness;
+    int64_t surfaceStabilizeTemperature;
 
     int64_t coreTemperature;
 
@@ -115,22 +119,6 @@ int_fast64_t fastestSqrt64(const int_fast64_t n)
     int_fast64_t a = (int_fast64_t) (n != 0) << (log2floor >> 1);
     int_fast64_t b;
 
-    b = n / a; a = (a+b) / 2;
-    b = n / a; a = (a+b) / 2;
-    return a;
-}
-
-// Only use this for testing
-int_fast64_t fastSqrt64(int_fast64_t n) {
-    // This will be probably up to 1% off or something
-    int_fast64_t log2floor = bit_width(n) - 1;
-    int_fast64_t a = (int_fast64_t) (n != 0) << (log2floor >> 1);
-    int_fast64_t b;
-
-    b = n / a; a = (a+b) / 2;
-    b = n / a; a = (a+b) / 2;
-
-    // Preform a couple extra iterations of the newton method for extra precision
     b = n / a; a = (a+b) / 2;
     b = n / a; a = (a+b) / 2;
     return a;
@@ -182,7 +170,7 @@ void setDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, 
     bodies[i].velocityY = vy;
     bodies[i].surfaceTemperature = 288;
     bodies[i].coreTemperature = 1590;
-    bodies[i].atmosphereDensity = 100;
+    bodies[i].atmosphereDensity = 1200;
 }
 
 void cameraOnPlanet(uint16_t planet) {
@@ -230,6 +218,7 @@ int main(void)
         }
 
         /* As little non-rendering logic as possible */
+        beginFrame = clock();
         calculateAllBodyPhysics();
         cameraOnPlanet(selectedPlanet);
         draw();
@@ -246,12 +235,18 @@ int main(void)
     return 0;
 }
 
-void moveBody(int i) {
+void applyBody(int i) {
     bodies[i].x += bodies[i].velocityX * (timeStep * 1 / 3600) / 1;
     bodies[i].y += bodies[i].velocityY * (timeStep * 1 / 3600) / 1;
+
+    bodies[i].surfaceTemperature = bodies[i].surfaceStabilizeTemperature;
+    bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
+    //bodies[i].surfaceTemperature += (bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature) / 10;
 }
 
-void gravity(int i) {
+void physics(int i) {
+    bodies[i].surfaceStabilizeTemperature = bodies[i].coreTemperature / 2599;
+
     for(int j = 0; j < num_bodies; j++) {
         if(j != i) {
             //TODO: implement inverse square law
@@ -263,6 +258,8 @@ void gravity(int i) {
             int_fast64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
             int_fast64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
 
+            bodies[i].surfaceStabilizeTemperature += (6931208 * bodies[j].brightness) / (dist + 1213 * bodies[j].brightness) + 10;// * 100000 / ((bodies[j].radius * bodies[j].radius / 10000000 + 1))) ;
+
             gravityX*=(timeStep / 3600);
             gravityY*=(timeStep / 3600);
             bodies[i].velocityX += gravityX / (squaredDist / 40000000);//(timeStep / 10);  bodies[j].mass /
@@ -270,34 +267,20 @@ void gravity(int i) {
 
         }
     }
-}
-
-void updateAreaOfBody(int index) {
-    bodies[index].area = 4 * 3 * bodies[index].radius * bodies[index].radius;
-}
-
-
-void calculateStabilizingTemperature(uint16_t index) {
-    // Note that planets with larger atmospheres should take longer to diverge to the atmoshere
-    updateAreaOfBody(index);
-    bodies[index].surfaceStabilizeTemperature = bodies[index].coreTemperature * 1000000 / (bodies[index].area / 100); // (bodies[index].area / 10);
-    /*for(int j = 0; j < num_bodies; j++) {
-        if(j != i) {
-
-        }
-    }*/
+    bodies[i].surfaceStabilizeTemperature = (bodies[i].surfaceStabilizeTemperature * (1000 + bodies[i].atmosphereDensity / 20)) / 1000;
 }
 
 void calculateAllBodyPhysics() {
     for(int i = 0; i < num_bodies; i++) {
         // Really bad efficiency since this doesn't just check the parent for gravity
         // O(n^2 - n) efficiency
-        calculateStabilizingTemperature(i);
-        gravity(i);
+        //calculateStabilizingTemperature(i);
+        physics(i);
     }
 
     for(int i = 0; i < num_bodies; i++) {
-        moveBody(i);
+        applyBody(i);
+
     }
 }
 
@@ -371,27 +354,64 @@ void draw_planet(uint16_t i) {
         }
     }
     //gfx_FillCircle(150, 150, drawSize);
-    gfx_FillCircle((bodies[i].x - camX - camX2) * SCREEN_X / camZoom + 160, (camY + camY2 - bodies[i].y) * SCREEN_X / camZoom + 120, drawSize);
+    int64_t dispX = (bodies[i].x - camX - camX2) * SCREEN_X / camZoom + 160;
+    if(dispX + drawSize > 0 && dispX - drawSize < SCREEN_X) {
+        int64_t dispY = (camY + camY2 - bodies[i].y) * SCREEN_X / camZoom + 120;
+        if(dispY + drawSize > 0 && dispY - drawSize < SCREEN_Y) {
+            gfx_FillCircle(dispX, dispY, drawSize);
+        }
+    }
 }
 
 void planetInfo() {
     gfx_SetColor(0);
     //gfx_FillRectangle(SCREEN_X - 80, 0, 80, 240);
-    gfx_SetTextXY(SCREEN_X - 80, 0);
+    gfx_SetTextXY(SCREEN_X - 110, 0);
 
     gfx_PrintString(bodies[selectedPlanet].name);
 
-    gfx_SetTextXY(SCREEN_X - 80, 20);
+    gfx_SetTextXY(SCREEN_X - 110, 20);
 
     gfx_PrintString("R:");
     gfx_PrintUInt(bodies[selectedPlanet].radius, 1);
     gfx_PrintString("km");
 
-    gfx_SetTextXY(SCREEN_X - 80, 30);
+    gfx_SetTextXY(SCREEN_X - 110, 30);
 
     gfx_PrintString("T:");
     gfx_PrintUInt(bodies[selectedPlanet].surfaceStabilizeTemperature, 1);
-    gfx_PrintString("C");
+    gfx_PrintString("K");
+
+    gfx_SetTextXY(SCREEN_X - 110, 40);
+
+    gfx_PrintString("T:");
+    gfx_PrintInt((bodies[selectedPlanet].surfaceStabilizeTemperature - 273) * 9 / 5 + 32, 1);
+    gfx_PrintString("F");
+
+    gfx_SetTextXY(SCREEN_X - 110, 50);
+
+    gfx_PrintString("Vx:");
+    gfx_PrintInt(bodies[selectedPlanet].velocityX, 1);
+    gfx_PrintString("kmh");
+
+    gfx_SetTextXY(SCREEN_X - 110, 60);
+
+    gfx_PrintString("Vy:");
+    gfx_PrintInt(bodies[selectedPlanet].velocityY, 1);
+    gfx_PrintString("kmh");
+
+    gfx_SetTextXY(SCREEN_X - 110, 70);
+
+    gfx_PrintString("M:");
+    gfx_PrintInt(bodies[selectedPlanet].mass, 1);
+
+    gfx_SetTextXY(SCREEN_X - 110, 80);
+
+    gfx_PrintString("A:");
+    gfx_PrintInt(bodies[selectedPlanet].atmosphereDensity / 1000, 1);
+    gfx_PrintString(".");
+    gfx_PrintInt(bodies[selectedPlanet].atmosphereDensity % 1000, 1);
+    gfx_PrintString("kg/m");
 }
 
 void gui() {
@@ -402,6 +422,10 @@ void gui() {
 
     gfx_PrintInt(timeStep, 2);
     gfx_PrintString("x ");
+
+    gfx_SetTextXY(0, SCREEN_Y - 9);
+    gfx_PrintInt(10000 / (clock() - beginFrame), 2);
+    gfx_PrintString("fps ");
 
     planetInfo();
 }
