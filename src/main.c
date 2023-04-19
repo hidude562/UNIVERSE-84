@@ -29,7 +29,7 @@
 #include <keypadc.h>
 #include <usbdrvce.h>
 
-#define num_bodies 3
+#define num_bodies 4
 #define SCREEN_X 320
 #define SCREEN_Y 240
 
@@ -40,6 +40,7 @@ void calculateAllBodyPhysics();
 bool prevDecPoint;
 bool prevChs;
 bool prevEnter;
+bool paused;
 
 uint64_t timeStep = 3600;
 
@@ -88,6 +89,8 @@ struct body {
     // In km/h
     int64_t velocityX;
     int64_t velocityY;
+
+
     int64_t x;
     int64_t y;
 };
@@ -194,10 +197,11 @@ int main(void)
     setDefaultPlanet(1, 0, -384400, 3683, 0, 100, 1079);
     */
 
-
-    setDefaultPlanet(0, 0, 0,      107826, 0, 130000, 6378);
-    setDefaultPlanet(1, 0, -384400,107826 + 3683, 0, 1600, 1079);
+    setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1200);
+    setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0);
+    //setDefaultPlanet(1, 0,  -384400, 107826 + 3683, 0, 1600, 1079);
     setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0);
+    setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000);
 
     //4324000000
 
@@ -219,7 +223,9 @@ int main(void)
 
         /* As little non-rendering logic as possible */
         beginFrame = clock();
-        calculateAllBodyPhysics();
+        if(timeStep > 0) {
+            calculateAllBodyPhysics();
+        }
         cameraOnPlanet(selectedPlanet);
         draw();
         controls();
@@ -238,9 +244,12 @@ int main(void)
 void applyBody(int i) {
     bodies[i].x += bodies[i].velocityX * (timeStep * 1 / 3600) / 1;
     bodies[i].y += bodies[i].velocityY * (timeStep * 1 / 3600) / 1;
+    //bodies[i].xOver100 = bodies[i].x / 100;
+    //bodies[i].yOver100 = bodies[i].y / 100;
 
     bodies[i].surfaceTemperature = bodies[i].surfaceStabilizeTemperature;
     bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
+
     //bodies[i].surfaceTemperature += (bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature) / 10;
 }
 
@@ -264,10 +273,9 @@ void physics(int i) {
             gravityY*=(timeStep / 3600);
             bodies[i].velocityX += gravityX / (squaredDist / 40000000);//(timeStep / 10);  bodies[j].mass /
             bodies[i].velocityY += gravityY / (squaredDist / 40000000);//(timeStep / 10);
-
         }
     }
-    bodies[i].surfaceStabilizeTemperature = (bodies[i].surfaceStabilizeTemperature * (1000 + bodies[i].atmosphereDensity / 20)) / 1000;
+    bodies[i].surfaceStabilizeTemperature = (bodies[i].surfaceStabilizeTemperature * (1000 + bodies[i].atmosphereDensity / 300)) / 1000;
 }
 
 void calculateAllBodyPhysics() {
@@ -319,12 +327,20 @@ void controls() {
     }
     if((kb_Data[4] & kb_DecPnt)) {
         if(!prevDecPoint)
-            timeStep*=2;
+            if(timeStep == 0) {
+                timeStep+=3600;
+            } else {
+                timeStep*=2;
+            }
         prevDecPoint = true;
     } else {prevDecPoint = false;}
     if((kb_Data[5] & kb_Chs)) {
         if(!prevChs && timeStep > 3600)
             timeStep/=2;
+        else {
+            paused = true;
+            timeStep = 0;
+        }
         prevChs = true;
     } else {prevChs = false;}
 
@@ -420,8 +436,12 @@ void gui() {
     gfx_PrintInt(camZoom, 2);
     gfx_PrintString(" KM    ");
 
-    gfx_PrintInt(timeStep, 2);
-    gfx_PrintString("x ");
+    if(timeStep > 0) {
+        gfx_PrintInt(timeStep, 1);
+        gfx_PrintString("x ");
+    } else {
+        gfx_PrintString("Paused ");
+    }
 
     gfx_SetTextXY(0, SCREEN_Y - 9);
     gfx_PrintInt(10000 / (clock() - beginFrame), 2);
