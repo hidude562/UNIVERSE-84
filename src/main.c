@@ -42,6 +42,7 @@ bool prevChs;
 bool prevEnter;
 bool paused;
 
+
 uint64_t timeStep = 3600;
 
 // Distance is in KM
@@ -89,6 +90,8 @@ struct body {
     // In km/h
     int64_t velocityX;
     int64_t velocityY;
+
+    // Planet display vars
 
 
     int64_t x;
@@ -258,21 +261,24 @@ void physics(int i) {
 
     for(int j = 0; j < num_bodies; j++) {
         if(j != i) {
-            //TODO: implement inverse square law
-            int_fast64_t deltaX = bodies[j].x - bodies[i].x;
-            int_fast64_t deltaY = bodies[j].y - bodies[i].y;
-            int_fast64_t squaredDist = (deltaX * deltaX) + (deltaY * deltaY);
-            int_fast64_t dist   = fastestSqrt64(squaredDist);
+            if(bodies[j].mass * 50 / bodies[i].mass != 0) {
+                //TODO: implement inverse square law
+                int_fast64_t deltaX = bodies[j].x - bodies[i].x;
+                int_fast64_t deltaY = bodies[j].y - bodies[i].y;
+                int_fast64_t squaredDist = (deltaX * deltaX) + (deltaY * deltaY);
+                int_fast64_t dist   = fastestSqrt64(squaredDist);
 
-            int_fast64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
-            int_fast64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
+                if((bodies[j].mass * 100000) / (squaredDist / 100) != 0) {
+                    int_fast64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
+                    int_fast64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
 
-            bodies[i].surfaceStabilizeTemperature += (6931208 * bodies[j].brightness) / (dist + 1213 * bodies[j].brightness) + 10;// * 100000 / ((bodies[j].radius * bodies[j].radius / 10000000 + 1))) ;
-
-            gravityX*=(timeStep / 3600);
-            gravityY*=(timeStep / 3600);
-            bodies[i].velocityX += gravityX / (squaredDist / 40000000);//(timeStep / 10);  bodies[j].mass /
-            bodies[i].velocityY += gravityY / (squaredDist / 40000000);//(timeStep / 10);
+                    bodies[i].surfaceStabilizeTemperature += (6931208 * bodies[j].brightness) / (dist + 1213 * bodies[j].brightness) + 10;// * 100000 / ((bodies[j].radius * bodies[j].radius / 10000000 + 1))) ;
+                    gravityX*=(timeStep / 3600);
+                    gravityY*=(timeStep / 3600);
+                    bodies[i].velocityX += gravityX / (squaredDist / 40000000);//(timeStep / 10);  bodies[j].mass /
+                    bodies[i].velocityY += gravityY / (squaredDist / 40000000);//(timeStep / 10);
+                }
+            }
         }
     }
     bodies[i].surfaceStabilizeTemperature = (bodies[i].surfaceStabilizeTemperature * (1000 + bodies[i].atmosphereDensity / 300)) / 1000;
