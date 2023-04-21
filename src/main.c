@@ -1,26 +1,18 @@
 ////////////////////////////////////////
-// { PROGRAM NAME } { VERSION }
-// Author:
-// License:
-// Description:
+// { Slightly Accurate Planetary Simulator } { 0.1 }
+// Author: hidude562
+// License: Literally Dont care
+// Description: Pretty much 2D universe sandbox
 ////////////////////////////////////////
 
-/*
-* The comments in this file are here to guide you initially. Note that you shouldn't actually
-* write comments that are pointless or obvious in your own code, write useful ones instead!
-* See this for more details: https://ce-programming.github.io/toolchain/static/coding-guidelines.html
-*
-* Have fun!
-*/
 
-/* You probably want to keep these headers */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <tice.h>
 #include <time.h>
+#include "gfx/gfx.h"
 
-/* Here are some standard headers. Take a look at the toolchain for more. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -247,8 +239,6 @@ int main(void)
 void applyBody(int i) {
     bodies[i].x += bodies[i].velocityX * (timeStep * 1 / 3600) / 1;
     bodies[i].y += bodies[i].velocityY * (timeStep * 1 / 3600) / 1;
-    //bodies[i].xOver100 = bodies[i].x / 100;
-    //bodies[i].yOver100 = bodies[i].y / 100;
 
     bodies[i].surfaceTemperature = bodies[i].surfaceStabilizeTemperature;
     bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
@@ -267,18 +257,18 @@ void physics(int i) {
                 int_fast64_t deltaY = bodies[j].y - bodies[i].y;
                 int_fast64_t squaredDist = (deltaX * deltaX) + (deltaY * deltaY);
                 int_fast64_t dist   = fastestSqrt64(squaredDist);
+                bodies[i].surfaceStabilizeTemperature += (6931208 * bodies[j].brightness) / (dist + 1213 * bodies[j].brightness) + 10;
 
-                if((bodies[j].mass * 100000) / (squaredDist / 100) != 0) {
+                if((bodies[j].mass * 100000) / (squaredDist / 10000 + 1) != 0) {
                     int_fast64_t gravityX = (deltaX * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass / (dist / 10));
                     int_fast64_t gravityY = (deltaY * 10) / (dist / 10) * (bodies[j].mass / 100);//(bodies[j].mass) / (dist / 10);
 
-                    bodies[i].surfaceStabilizeTemperature += (6931208 * bodies[j].brightness) / (dist + 1213 * bodies[j].brightness) + 10;// * 100000 / ((bodies[j].radius * bodies[j].radius / 10000000 + 1))) ;
                     gravityX*=(timeStep / 3600);
                     gravityY*=(timeStep / 3600);
-                    bodies[i].velocityX += gravityX / (squaredDist / 40000000);//(timeStep / 10);  bodies[j].mass /
-                    bodies[i].velocityY += gravityY / (squaredDist / 40000000);//(timeStep / 10);
+                    bodies[i].velocityX += gravityX / (squaredDist / 40000000); //(timeStep / 10);  bodies[j].mass /
+                    bodies[i].velocityY += gravityY / (squaredDist / 40000000); //(timeStep / 10);
                 }
-            }
+           }
         }
     }
     bodies[i].surfaceStabilizeTemperature = (bodies[i].surfaceStabilizeTemperature * (1000 + bodies[i].atmosphereDensity / 300)) / 1000;
@@ -452,6 +442,8 @@ void gui() {
     gfx_SetTextXY(0, SCREEN_Y - 9);
     gfx_PrintInt(10000 / (clock() - beginFrame), 2);
     gfx_PrintString("fps ");
+
+    gfx_TransparentSprite(dusty, 10, SCREEN_Y - 45);
 
     planetInfo();
 }
