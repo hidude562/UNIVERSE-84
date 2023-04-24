@@ -10,7 +10,22 @@ converts:
     palette: global_palette
     transparent-color-index: 0
     images:
-      - dusty.png
+      - dustyPlanet.png
+      - waterSome.png
+      - waterLots.png
+      - waterAll.png
+      - atmosphereDenseCold.png
+      - atmosphereDenseWarm.png
+      - gasGiantWarm.png
+      - gasGiantCold.png
+      - allIce.png
+      - mostIce.png
+      - someIce.png
+      - littleIce.png
+      - blueStar.png
+      - dimStar.png
+      - midStar.png
+      - lunarBase.png
 
 outputs:
   - type: c

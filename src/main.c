@@ -72,6 +72,7 @@ struct body {
 
     // Kelvin
     int64_t surfaceTemperature;
+    uint8_t color;
 
     // Surface temp and area combined
     int64_t brightness;
@@ -83,8 +84,11 @@ struct body {
     int64_t velocityX;
     int64_t velocityY;
 
-    // Planet display vars
+    // A value equal to its own mass is similar water levels to Earth
+    uint32_t waterAmount;
 
+    // Planet display vars
+    bool moonLike;
 
     int64_t x;
     int64_t y;
@@ -140,7 +144,7 @@ char* getRandomName() {
 }
 
 
-void setAdvancedPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius, char* name, int32_t coreTemperature, uint32_t atmosphereDensity) {
+void setAdvancedPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius, char* name, int32_t coreTemperature, uint32_t atmosphereDensity, uint32_t waterAmount, bool moonLike) {
     // Mars-like planet
     bodies[i].name = name;
     bodies[i].desc = "A description.....";
@@ -150,10 +154,12 @@ void setAdvancedPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy,
     bodies[i].y = y;
     bodies[i].velocityX = vx;
     bodies[i].velocityY = vy;
+    bodies[i].moonLike = moonLike;
 
     bodies[i].surfaceTemperature = 288;
     bodies[i].coreTemperature = coreTemperature;
     bodies[i].atmosphereDensity = atmosphereDensity;
+    bodies[i].waterAmount = waterAmount;
 }
 
 void setDefaultPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius) {
@@ -192,11 +198,11 @@ int main(void)
     setDefaultPlanet(1, 0, -384400, 3683, 0, 100, 1079);
     */
 
-    setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1200);
-    setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0);
+    setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1293, 130000, false);
+    setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0, 0, true);
     //setDefaultPlanet(1, 0,  -384400, 107826 + 3683, 0, 1600, 1079);
-    setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0);
-    setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000);
+    setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0, 0, false);
+    setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000, 0, false);
 
     //4324000000
 
@@ -205,6 +211,7 @@ int main(void)
 
     /* Draw to the buffer to avoid rendering artifacts */
     gfx_SetDrawBuffer();
+    gfx_SetPalette(global_palette, 256, 0);
 
     /* No rendering allowed in step! */
     while (step())
@@ -217,13 +224,13 @@ int main(void)
         }
 
         /* As little non-rendering logic as possible */
-        beginFrame = clock();
         if(timeStep > 0) {
             calculateAllBodyPhysics();
         }
         cameraOnPlanet(selectedPlanet);
         draw();
         controls();
+        beginFrame = clock();
 
         /* Queue the buffered frame to be displayed */
         gfx_SwapDraw();
@@ -242,6 +249,9 @@ void applyBody(int i) {
 
     bodies[i].surfaceTemperature = bodies[i].surfaceStabilizeTemperature;
     bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
+    if(bodies[i].surfaceTemperature > 385) {
+        bodies[i].waterAmount -=  bodies[i].waterAmount / (timeStep / 3600);
+    }
 
     //bodies[i].surfaceTemperature += (bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature) / 10;
 }
@@ -251,7 +261,7 @@ void physics(int i) {
 
     for(int j = 0; j < num_bodies; j++) {
         if(j != i) {
-            if(bodies[j].mass * 50 / bodies[i].mass != 0) {
+            if(bodies[j].mass * 50000 / bodies[i].mass != 0) {
                 //TODO: implement inverse square law
                 int_fast64_t deltaX = bodies[j].x - bodies[i].x;
                 int_fast64_t deltaY = bodies[j].y - bodies[i].y;
@@ -357,7 +367,7 @@ bool step(void)
 }
 
 void draw_planet(uint16_t i) {
-    gfx_SetColor(193);
+    gfx_SetColor(bodies[i].color);
     int drawSize = 10;
     if(correctSizedBodies) {
         drawSize = bodies[i].radius * SCREEN_X / camZoom;
@@ -424,6 +434,84 @@ void planetInfo() {
     gfx_PrintString(".");
     gfx_PrintInt(bodies[selectedPlanet].atmosphereDensity % 1000, 1);
     gfx_PrintString("kg/m");
+
+
+    gfx_SetTextXY(SCREEN_X - 110, 90);
+    gfx_PrintString("W:");
+    gfx_PrintInt(bodies[selectedPlanet].waterAmount, 1);
+
+}
+
+// Note that this also updates the planet color in the main view
+// TODO: update all planet appearences, not just when selected
+void drawPreviewPlanet() {
+    if(bodies[selectedPlanet].moonLike) {
+        gfx_TransparentSprite(lunarBase, 4, SCREEN_Y - 45);
+    } else {
+        gfx_TransparentSprite(dustyPlanet, 4, SCREEN_Y - 45);
+    }
+    bodies[selectedPlanet].color = 11;
+
+    // Draw water
+    if(bodies[selectedPlanet].atmosphereDensity > 50) {
+        if(bodies[selectedPlanet].waterAmount > bodies[selectedPlanet].mass * 2) {
+            gfx_TransparentSprite(waterAll, 4, SCREEN_Y - 45);
+            bodies[selectedPlanet].color = 4;
+        } else if(bodies[selectedPlanet].waterAmount > bodies[selectedPlanet].mass) {
+            gfx_TransparentSprite(waterLots, 4, SCREEN_Y - 45);
+            bodies[selectedPlanet].color = 4;
+        } else if(bodies[selectedPlanet].waterAmount > bodies[selectedPlanet].mass / 2) {
+            gfx_TransparentSprite(waterSome, 4, SCREEN_Y - 45);
+            bodies[selectedPlanet].color = 4;
+        }
+    }
+
+
+    // Ice-caps
+    if(bodies[selectedPlanet].waterAmount > bodies[selectedPlanet].mass / 2) {
+        if(bodies[selectedPlanet].surfaceTemperature < 225) {
+            gfx_TransparentSprite(allIce, 4, SCREEN_Y - 45);
+            bodies[selectedPlanet].color = 1;
+        } else if(bodies[selectedPlanet].surfaceTemperature < 260) {
+            gfx_TransparentSprite(mostIce, 4, SCREEN_Y - 45);
+        } else if(bodies[selectedPlanet].surfaceTemperature < 280) {
+            gfx_TransparentSprite(someIce, 4, SCREEN_Y - 45);
+        } else if(bodies[selectedPlanet].surfaceTemperature < 310) {
+            gfx_TransparentSprite(littleIce, 4, SCREEN_Y - 45);
+        }
+    }
+
+
+    // Atmoshpere
+    if(bodies[selectedPlanet].surfaceTemperature > 100) {
+        if(bodies[selectedPlanet].atmosphereDensity > 50000) {
+            gfx_TransparentSprite(gasGiantWarm, 4, SCREEN_Y - 45);
+            bodies[selectedPlanet].color = 18;
+        }
+        else if(bodies[selectedPlanet].atmosphereDensity > 5000) {
+            gfx_TransparentSprite(atmosphereDenseWarm, 4, SCREEN_Y - 45);
+        }
+    } else {
+        if(bodies[selectedPlanet].atmosphereDensity > 50000) {
+            gfx_TransparentSprite(gasGiantCold, 4, SCREEN_Y - 45);
+            bodies[selectedPlanet].color = 4;
+        } else if(bodies[selectedPlanet].atmosphereDensity > 5000) {
+            gfx_TransparentSprite(atmosphereDenseCold, 4, SCREEN_Y - 45);
+        }
+    }
+
+
+    // Draw bright object if the object is warm
+    if(bodies[selectedPlanet].surfaceTemperature > 10000) {
+        gfx_TransparentSprite(blueStar, 4, SCREEN_Y - 45);
+        bodies[selectedPlanet].color = 7;
+    } else if(bodies[selectedPlanet].surfaceTemperature > 3000) {
+        gfx_TransparentSprite(midStar, 4, SCREEN_Y - 45);
+        bodies[selectedPlanet].color = 19;
+    } else if(bodies[selectedPlanet].surfaceTemperature > 1500) {
+        bodies[selectedPlanet].color = 17;
+        gfx_TransparentSprite(dimStar, 4, SCREEN_Y - 45);
+    }
 }
 
 void gui() {
@@ -443,14 +531,15 @@ void gui() {
     gfx_PrintInt(10000 / (clock() - beginFrame), 2);
     gfx_PrintString("fps ");
 
-    gfx_TransparentSprite(dusty, 10, SCREEN_Y - 45);
+    drawPreviewPlanet();
 
     planetInfo();
 }
 
 void draw(void)
 {
-    gfx_FillScreen(0);
+    gfx_FillScreen(2);
+    //gfx_SetDefaultPalette(global_palette);
     for(uint16_t i = 0; i < num_bodies; i++) {
         draw_planet(i);
     }
