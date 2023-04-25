@@ -23,6 +23,7 @@ extern "C" {
 #include "dimStar.h"
 #include "midStar.h"
 #include "lunarBase.h"
+#include "planetWarm.h"
 
 #ifdef __cplusplus
 }

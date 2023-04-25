@@ -26,6 +26,7 @@ converts:
       - dimStar.png
       - midStar.png
       - lunarBase.png
+      - planetWarm.png
 
 outputs:
   - type: c
