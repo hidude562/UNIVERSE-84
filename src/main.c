@@ -5,40 +5,27 @@
 // Description: Pretty much 2D universe sandbox
 ////////////////////////////////////////
 
-
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <tice.h>
-#include <time.h>
-#include "gfx/gfx.h"
-
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <graphx.h>
-#include <keypadc.h>
-#include <usbdrvce.h>
-
-#define num_bodies 4
-#define SCREEN_X 320
-#define SCREEN_Y 240
+#include "header.h"
+//#include "input.c"
 
 void controls();
 void calculateAllBodyPhysics();
-
+void inputDisplay(int64_t val);
 
 bool prevDecPoint;
 bool prevChs;
 bool prevEnter;
 bool paused;
+uint8_t selectedIndex;
 
+bool upIndexerIsDown;
+bool downIndexerIsDown;
+bool isInputting = true;
 
 uint64_t timeStep = 3600;
 
 // Distance is in KM
-// Mass is Metric Tonnes
+// Mass is described in the struct body
 // Temperatature is in kelvin
 
 
@@ -52,6 +39,10 @@ int64_t camY2 = 0;
 
 int64_t camZoom = 100000;
 bool    correctSizedBodies = true;
+
+//Don't use this unless you know you will be in the input dialauge, it wont be updated otherwise!
+bool    pressingNumNow;
+
 uint16_t selectedPlanet = 0;
 clock_t beginFrame;
 
@@ -101,7 +92,7 @@ void begin(void);
 void end(void);
 bool step(void);
 void draw(void);
-
+void drawSelectedIndex();
 
 
 
@@ -143,6 +134,174 @@ char* getRandomName() {
     return newName;
 }
 
+int8_t getNumOnKeyboard(bool prevNum) {
+    // Too lazy to access index through the kb array
+    // 0
+    pressingNumNow = false;
+
+    if(kb_Data[3] & kb_0) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 0;
+    }
+
+
+    // 1
+    if(kb_Data[3] & kb_1) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 1;
+    }
+
+    // 2
+    if(kb_Data[4] & kb_2) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 2;
+    }
+
+    // 3
+    if(kb_Data[5] & kb_3) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 3;
+    }
+
+
+    // 4
+    if(kb_Data[3] & kb_4) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 4;
+    }
+
+    // 5
+    if(kb_Data[4] & kb_5) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 5;
+    }
+
+    // 6
+    if(kb_Data[5] & kb_6) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 6;
+    }
+
+
+    // 7
+    if(kb_Data[3] & kb_7) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 7;
+    }
+
+    // 8
+    if(kb_Data[4] & kb_8) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 8;
+    }
+
+    // 9
+    if(kb_Data[5] & kb_9) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return 9;
+    }
+
+    // Negative sign
+    if(kb_Data[5] & kb_Chs) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return -1;
+    }
+
+    return -2;
+}
+
+int64_t getInput(int64_t formerValue) {
+    isInputting = true;
+    int64_t value = formerValue;
+    bool prevDel = false;
+    bool prevNum = false;
+
+    while(!(kb_Data[6] & kb_Enter)) {
+        if(kb_On) {
+            while(kb_On) {}
+            isInputting = false;
+            return formerValue;
+        }
+        inputDisplay(value);
+        gfx_SwapDraw();
+
+        kb_Scan();
+
+        // Inputs
+        if(kb_Data[1] & kb_Del) {
+            if(!prevDel) {
+                value/=10;
+            }
+            prevDel = true;
+        } else {
+            prevDel = false;
+        }
+
+        int8_t numOnKeyBoard = getNumOnKeyboard(prevNum);
+
+        if(numOnKeyBoard != -2) {
+            if(numOnKeyBoard == -1) {
+                value *= -1;
+            } else {
+                if(value < 0) {
+                    value *= 10;
+                    value -= numOnKeyBoard;
+                } else {
+                    value *= 10;
+                    value += numOnKeyBoard;
+                }
+            }
+        }
+        prevNum = pressingNumNow;
+    }
+
+    while(kb_Data[6] & kb_Enter) {kb_Scan();}
+    isInputting = false;
+    return value;
+}
+
+// Not actually apart of the GFX lib but quite useful
+void gfx_PrintInt64_t(int64_t num, int16_t _hereForConsistancyDoesntDoAnything) {
+    // This can't harvest all the bits of int64_t but its good enough
+
+    if(num / 10000000 != 0) {
+        gfx_PrintInt((num / 10000000), 1);
+    }
+    if(llabs(num) < 10000000) {
+        gfx_PrintInt(num % 10000000, 1);
+    } else {
+        gfx_PrintInt(llabs(num % 10000000), 7);
+    }
+}
+
+void inputDisplay(int64_t val) {
+    gfx_SetTextFGColor(254);
+
+    gfx_SetColor(2);
+    gfx_FillRectangle(20, 126, SCREEN_X - 40, 33);
+
+    gfx_SetColor(255);
+    gfx_Rectangle(20, 126, SCREEN_X - 40, 33);
+
+    gfx_Rectangle(25, 140, SCREEN_X - 50, 15);
+    gfx_SetTextXY(27, 144);
+    gfx_PrintInt64_t(val, 2);
+
+    gfx_SetTextXY(27, 130);
+    gfx_PrintString("Enter a new value:");
+
+}
 
 void setAdvancedPlanet(uint16_t i, int64_t x, int64_t y, int64_t vx, int64_t vy, int64_t mass, int radius, char* name, int32_t coreTemperature, uint32_t atmosphereDensity, uint32_t waterAmount, bool moonLike) {
     // Mars-like planet
@@ -203,6 +362,7 @@ int main(void)
     //setDefaultPlanet(1, 0,  -384400, 107826 + 3683, 0, 1600, 1079);
     setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0, 0, false);
     setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000, 0, false);
+    setAdvancedPlanet(4, 0, -150000000 + 250000000, 86677, 0, 13891, 2106, "Mars", 1090, 1293, 20, false);
 
     //4324000000
 
@@ -224,6 +384,7 @@ int main(void)
         }
 
         /* As little non-rendering logic as possible */
+
         if(timeStep > 0) {
             calculateAllBodyPhysics();
         }
@@ -247,7 +408,8 @@ void applyBody(int i) {
     bodies[i].x += bodies[i].velocityX * (timeStep * 1 / 3600) / 1;
     bodies[i].y += bodies[i].velocityY * (timeStep * 1 / 3600) / 1;
 
-    bodies[i].surfaceTemperature = bodies[i].surfaceStabilizeTemperature;
+    // TODO: Do off of timeStep! This is a temp thing
+    bodies[i].surfaceTemperature += ((bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature)) / 2;
     bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
     if(bodies[i].surfaceTemperature > 385) {
         bodies[i].waterAmount -=  bodies[i].waterAmount / (timeStep / 3600);
@@ -261,7 +423,7 @@ void physics(int i) {
 
     for(int j = 0; j < num_bodies; j++) {
         if(j != i) {
-            if(bodies[j].mass * 50000 / bodies[i].mass != 0) {
+            if(bodies[j].mass * 15 / bodies[i].mass != 0) {
                 //TODO: implement inverse square law
                 int_fast64_t deltaX = bodies[j].x - bodies[i].x;
                 int_fast64_t deltaY = bodies[j].y - bodies[i].y;
@@ -308,6 +470,45 @@ void begin(void)
 void end(void)
 {
 
+}
+
+void setSelectedIndexValueByUserInput() {
+    int64_t prevVal = 0;
+    if(selectedIndex == 0) {//name
+
+    }
+    else if(selectedIndex == 1) {//radius
+        prevVal = bodies[selectedPlanet].radius;
+        bodies[selectedPlanet].radius = getInput(prevVal);
+    }
+    else if(selectedIndex == 2) {//surfaceTemp
+        prevVal = bodies[selectedPlanet].surfaceTemperature;
+        bodies[selectedPlanet].surfaceTemperature = getInput(prevVal);
+    }
+    else if(selectedIndex == 3) {//surfaceTempF
+        prevVal = (bodies[selectedPlanet].surfaceTemperature - 273) * 9 / 5 + 32;
+        bodies[selectedPlanet].surfaceTemperature = (getInput(prevVal) - 32) * 5 / 9 + 273;
+    }
+    else if(selectedIndex == 4) {//Vx
+        prevVal = bodies[selectedPlanet].velocityX;
+        bodies[selectedPlanet].velocityX = getInput(prevVal);
+    }
+    else if(selectedIndex == 5) {//Vy
+        prevVal = bodies[selectedPlanet].velocityY;
+        bodies[selectedPlanet].velocityY = getInput(prevVal);
+    }
+    else if(selectedIndex == 6) {//mass
+        prevVal = bodies[selectedPlanet].mass;
+        bodies[selectedPlanet].mass = getInput(prevVal);
+    }
+    else if(selectedIndex == 7) {//atmosphree
+        prevVal = bodies[selectedPlanet].atmosphereDensity;
+        bodies[selectedPlanet].atmosphereDensity = getInput(prevVal);
+    }
+    else if(selectedIndex == 8) {//water
+        prevVal = bodies[selectedPlanet].waterAmount;
+        bodies[selectedPlanet].waterAmount = getInput(prevVal);
+    }
 }
 
 void controls() {
@@ -358,6 +559,27 @@ void controls() {
         }
         prevEnter = true;
     } else {prevEnter = false;}
+
+    if(kb_Data[2] & kb_Sto) {
+        timeStep = 0;
+        draw();
+        setSelectedIndexValueByUserInput();
+    }
+
+
+    if((kb_Data[5] & kb_6)) {
+        if(!upIndexerIsDown) {
+            selectedIndex--;
+        }
+        upIndexerIsDown = true;
+    } else {upIndexerIsDown = false;}
+
+    if((kb_Data[5] & kb_3)) {
+        if(!downIndexerIsDown) {
+            selectedIndex++;
+        }
+        downIndexerIsDown = true;
+    } else {downIndexerIsDown = false;}
 }
 
 /* Implement me! */
@@ -401,13 +623,13 @@ void planetInfo() {
     gfx_SetTextXY(SCREEN_X - 110, 30);
 
     gfx_PrintString("T:");
-    gfx_PrintUInt(bodies[selectedPlanet].surfaceStabilizeTemperature, 1);
+    gfx_PrintUInt(bodies[selectedPlanet].surfaceTemperature, 1);
     gfx_PrintString("K");
 
     gfx_SetTextXY(SCREEN_X - 110, 40);
 
     gfx_PrintString("T:");
-    gfx_PrintInt((bodies[selectedPlanet].surfaceStabilizeTemperature - 273) * 9 / 5 + 32, 1);
+    gfx_PrintInt((bodies[selectedPlanet].surfaceTemperature - 273) * 9 / 5 + 32, 1);
     gfx_PrintString("F");
 
     gfx_SetTextXY(SCREEN_X - 110, 50);
@@ -440,6 +662,10 @@ void planetInfo() {
     gfx_PrintString("W:");
     gfx_PrintInt(bodies[selectedPlanet].waterAmount, 1);
 
+    gfx_SetTextXY(SCREEN_X - 110, 100);
+    gfx_PrintString("CT:");
+    gfx_PrintInt64_t(bodies[selectedPlanet].coreTemperature, 1);
+    gfx_PrintString("K");
 }
 
 // Note that this also updates the planet color in the main view
@@ -483,7 +709,7 @@ void drawPreviewPlanet() {
 
 
     // Atmoshpere
-    if(bodies[selectedPlanet].surfaceTemperature > 100) {
+    if(bodies[selectedPlanet].surfaceTemperature > 98) {
         if(bodies[selectedPlanet].atmosphereDensity > 50000) {
             gfx_TransparentSprite(gasGiantWarm, 4, SCREEN_Y - 45);
             bodies[selectedPlanet].color = 18;
@@ -504,13 +730,27 @@ void drawPreviewPlanet() {
     // Draw bright object if the object is warm
     if(bodies[selectedPlanet].surfaceTemperature > 10000) {
         gfx_TransparentSprite(blueStar, 4, SCREEN_Y - 45);
-        bodies[selectedPlanet].color = 7;
+        bodies[selectedPlanet].color = 3;
     } else if(bodies[selectedPlanet].surfaceTemperature > 3000) {
         gfx_TransparentSprite(midStar, 4, SCREEN_Y - 45);
+        bodies[selectedPlanet].color = 18;
+    } else if(bodies[selectedPlanet].surfaceTemperature > 2000) {
         bodies[selectedPlanet].color = 19;
-    } else if(bodies[selectedPlanet].surfaceTemperature > 1500) {
-        bodies[selectedPlanet].color = 17;
         gfx_TransparentSprite(dimStar, 4, SCREEN_Y - 45);
+    } else if(bodies[selectedPlanet].surfaceTemperature > 1000) {
+        bodies[selectedPlanet].color = 19;
+        gfx_TransparentSprite(planetWarm, 4, SCREEN_Y - 45);
+    }
+
+    drawSelectedIndex();
+}
+
+void drawSelectedIndex() {
+    gfx_SetColor(0);
+    if(selectedIndex > 0) {
+        gfx_Rectangle(SCREEN_X - 110, selectedIndex * 10 + 10, 110, 8);
+    } else {
+        gfx_Rectangle(SCREEN_X - 110, selectedIndex * 10, 110, 8);
     }
 }
 
