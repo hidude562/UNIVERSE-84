@@ -24,6 +24,8 @@ extern "C" {
 #include "midStar.h"
 #include "lunarBase.h"
 #include "planetWarm.h"
+#include "verySmallwater.h"
+#include "evenSmallerWater.h"
 
 #ifdef __cplusplus
 }

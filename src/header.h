@@ -13,6 +13,6 @@
 #include <keypadc.h>
 #include <usbdrvce.h>
 
-#define num_bodies 5
+#define maxBodies 50
 #define SCREEN_X 320
 #define SCREEN_Y 240

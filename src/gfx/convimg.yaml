@@ -27,6 +27,8 @@ converts:
       - midStar.png
       - lunarBase.png
       - planetWarm.png
+      - verySmallwater.png
+      - evenSmallerWater.png
 
 outputs:
   - type: c
