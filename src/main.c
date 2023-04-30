@@ -223,6 +223,20 @@ int8_t getNumOnKeyboard(bool prevNum) {
             return -1;
     }
 
+    // multiply sign
+    if(kb_Data[6] & kb_Mul) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return -3;
+    }
+
+    // divide sign
+    if(kb_Data[6] & kb_Div) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return -4;
+    }
+
     return -2;
 }
 
@@ -258,6 +272,12 @@ int64_t getInput(int64_t formerValue) {
         if(numOnKeyBoard != -2) {
             if(numOnKeyBoard == -1) {
                 value *= -1;
+            } else if(numOnKeyBoard == -3) {
+                value *= 3;
+                value /= 2;
+            } else if(numOnKeyBoard == -4) {
+                value *= 2;
+                value /= 3;
             } else {
                 if(value < 0) {
                     value *= 10;
@@ -396,21 +416,16 @@ int main(void)
 
 
     /*
-    // Earth Moon orbit
-
-    setDefaultPlanet(0, 0, 0,      0, 0, 130000, 6378);
-    setDefaultPlanet(1, 0, -384400, 3683, 0, 100, 1079);
-    */
-
-
+    // Test for collision
     setAdvancedPlanet(0, 0, 0, 0, 0, 130000, 63780, "Earth", 15900, 1293, 130000, false);
     setAdvancedPlanet(1, 0, -384400, 0, 0, 1560, 10079, "Luna", 1300, 0, 0, true);
+    */
 
-    //setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1293, 130000, false);
-    //setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0, 0, true);
-    //setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0, 0, false);
-    //setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000, 0, false);
-    //setAdvancedPlanet(4, 0, -150000000 + 250000000, 86677, 0, 13891, 2106, "Mars", 1090, 12, 2000, false);
+    setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1293, 130000, false);
+    setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0, 0, true);
+    setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0, 0, false);
+    setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000, 0, false);
+    setAdvancedPlanet(4, 0, -150000000 + 250000000, 86677, 0, 13891, 2106, "Mars", 1090, 12, 2000, false);
 
     //4324000000
 
@@ -627,6 +642,12 @@ void setSelectedIndexValueByUserInput() {
         prevVal = bodies[selectedPlanet].waterAmount;
         bodies[selectedPlanet].waterAmount = getInput(prevVal);
     }
+    else if(selectedIndex == 10) {// New Moon
+        setAdvancedPlanet(num_bodies, bodies[selectedPlanet].x, bodies[selectedPlanet].y + bodies[selectedPlanet].radius * 10,bodies[selectedPlanet].velocityX + bodies[selectedPlanet].mass / 14, bodies[selectedPlanet].velocityY, 13891, 2106, getRandomName(), 1090, 12, 2000, false);
+    }
+    else if(selectedIndex == 11) {// Remove body
+        removeBody(selectedPlanet);
+    }
 }
 
 void controls() {
@@ -784,6 +805,12 @@ void planetInfo() {
     gfx_PrintString("CT:");
     gfx_PrintInt64_t(bodies[selectedPlanet].coreTemperature, 1);
     gfx_PrintString("K");
+
+    gfx_SetTextXY(SCREEN_X - 110, 110);
+    gfx_PrintString("Create moon");
+
+    gfx_SetTextXY(SCREEN_X - 110, 120);
+    gfx_PrintString("Remove Body");
 }
 
 // Note that this also updates the planet color in the main view
