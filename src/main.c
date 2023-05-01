@@ -22,7 +22,7 @@ bool upIndexerIsDown;
 bool downIndexerIsDown;
 bool isInputting = true;
 
-uint64_t timeStep = 3600;
+uint64_t timeStep = 0;
 
 // Distance is in KM
 // Mass is described in the struct body
@@ -43,6 +43,7 @@ bool    correctSizedBodies = true;
 
 //Don't use this unless you know you will be in the input dialauge, it wont be updated otherwise!
 bool    pressingNumNow;
+
 
 uint16_t selectedPlanet = 0;
 clock_t beginFrame;
@@ -90,7 +91,7 @@ struct body {
 };
 
 // Debris starts from back of this array
-struct body bodies[50];
+struct body bodies[maxBodies + 1];
 
 void begin(void);
 void end(void);
@@ -223,6 +224,20 @@ int8_t getNumOnKeyboard(bool prevNum) {
             return -1;
     }
 
+    // multiply sign
+    if(kb_Data[6] & kb_Mul) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return -3;
+    }
+
+    // divide sign
+    if(kb_Data[6] & kb_Div) {
+        pressingNumNow = true;
+        if(!prevNum)
+            return -4;
+    }
+
     return -2;
 }
 
@@ -258,6 +273,12 @@ int64_t getInput(int64_t formerValue) {
         if(numOnKeyBoard != -2) {
             if(numOnKeyBoard == -1) {
                 value *= -1;
+            } else if(numOnKeyBoard == -3) {
+                value *= 3;
+                value /= 2;
+            } else if(numOnKeyBoard == -4) {
+                value *= 2;
+                value /= 3;
             } else {
                 if(value < 0) {
                     value *= 10;
@@ -332,7 +353,8 @@ void cameraOnPlanet(uint16_t planet) {
     camY2 = bodies[planet].y;
 }
 
-void newDebris(uint8_t i, uint8_t percentOfPrevBody) {
+// Creates new debris that has similar compisition to I but less of it
+void newDebris(uint8_t i, uint8_t otherObj, uint8_t percentOfPrevBody) {
     uint8_t newIndex = maxBodies - num_debris;
     num_debris++;
     bodies[newIndex].isBeingUsed = true;
@@ -342,23 +364,35 @@ void newDebris(uint8_t i, uint8_t percentOfPrevBody) {
     bodies[newIndex].waterAmount = (bodies[i].waterAmount * percentOfPrevBody) / 100;
     bodies[newIndex].atmosphereDensity = (bodies[i].atmosphereDensity * percentOfPrevBody) / 100;
     bodies[newIndex].radius = (bodies[i].radius * percentOfPrevBody) / 100;
-    bodies[i].surfaceTemperature = 300;
-    bodies[i].coreTemperature = 1000;
+    bodies[newIndex].surfaceTemperature = 300;
+    bodies[newIndex].coreTemperature = 1000;
+
+    bodies[newIndex].x = bodies[i].x;
+    bodies[newIndex].y = bodies[i].y;
 
 
     int8_t randomDir1 = rand() % 256;
     int8_t randomDir2 = rand() % 256;
 
-    bodies[newIndex].velocityX = 0 - bodies[i].velocityX + randomDir1 * 50;//(bodies[i].velocityX / 3 * randomDir / 128);
-    bodies[newIndex].velocityY = 0 - bodies[i].velocityY + randomDir2 * 50;//(bodies[i].velocityY / 3 * 128 / randomDir);
-    bodies[newIndex].x += 0 - bodies[i].velocityX * 20;
-    bodies[newIndex].y += 0 - bodies[i].velocityY * 20;
+    bodies[newIndex].velocityX = bodies[i].velocityX + randomDir1 * 50;//(bodies[i].velocityX / 3 * randomDir / 128);
+    bodies[newIndex].velocityY = bodies[i].velocityY + randomDir2 * 50;//(bodies[i].velocityY / 3 * 128 / randomDir);
+
+    int64_t deltaX = (bodies[i].x - bodies[otherObj].x);
+    int64_t deltaY = (bodies[i].y - bodies[otherObj].y);
+
+    bodies[newIndex].velocityX += deltaX / 4;
+    bodies[newIndex].velocityY += deltaY / 4;
+
+    int64_t distanceToOther = fastestSqrt64((deltaX * deltaX) + (deltaY * deltaY));
+    bodies[newIndex].x += ((deltaX * 100) / distanceToOther) * (bodies[otherObj].radius + bodies[i].radius) / 98;
+    bodies[newIndex].y += ((deltaY * 100) / distanceToOther) * (bodies[otherObj].radius + bodies[i].radius) / 98;
 }
 
 // Precondition: obj1 is larger (in mass) than obj2
 // Also that obj1 is not a simple object, which should be the case anyway
 void createDebris(uint8_t obj1, uint8_t obj2) {
-    if(bodies[obj1].mass / bodies[obj2].mass > 20) {
+    bodies[obj1].surfaceTemperature += bodies[obj2].mass * 100 / (bodies[obj1].mass / 100) * 4;
+    if(bodies[obj1].mass / bodies[obj2].mass > 200 || bodies[obj2].isSimple) {
         bodies[obj1].mass += bodies[obj2].mass;
         bodies[obj1].waterAmount += bodies[obj2].waterAmount;
         bodies[obj1].atmosphereDensity += bodies[obj2].atmosphereDensity / (bodies[obj1].mass / bodies[obj2].mass);
@@ -369,10 +403,11 @@ void createDebris(uint8_t obj1, uint8_t obj2) {
         return;
     } else {
 
-        newDebris(obj2, 25);
-        newDebris(obj2, 25);
-        newDebris(obj2, 25);
-        newDebris(obj2, 25);
+        newDebris(obj2, obj1, 20);
+        newDebris(obj2, obj1, 20);
+        newDebris(obj2, obj1, 20);
+        newDebris(obj2, obj1, 20);
+        newDebris(obj2, obj1, 20);
 
         removeBody(obj2);
     }
@@ -387,22 +422,20 @@ int main(void)
     begin();
 
 
-    /*
-    // Earth Moon orbit
 
-    setDefaultPlanet(0, 0, 0,      0, 0, 130000, 6378);
-    setDefaultPlanet(1, 0, -384400, 3683, 0, 100, 1079);
+    // Test for collision
+    /*
+    setAdvancedPlanet(0, 0, 0, 0, 0, 130000, 63780, "Earth", 15900, 1293, 130000, false);
+    setAdvancedPlanet(1, 0, -384400, 0, 0, 1560, 10079, "Luna", 1300, 0, 0, true);
     */
 
 
-    setAdvancedPlanet(0, 0, 0, 0, 0, 130000, 63780, "Earth", 15900, 1293, 130000, false);
-    setAdvancedPlanet(1, 0, -384400, 0, 0, 60000, 1079, "Luna", 1300, 0, 0, true);
+    setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1293, 130000, false);
+    setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0, 0, true);
+    setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0, 0, false);
+    setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000, 0, false);
+    setAdvancedPlanet(4, 0, -150000000 + 250000000, 86677, 0, 13891, 2106, "Mars", 1090, 12, 2000, false);
 
-    //setAdvancedPlanet(0, 0, 0, 107826, 0, 130000, 6378, "Earth", 1590, 1293, 130000, false);
-    //setAdvancedPlanet(1, 0, -384400, 107826 + 3683, 0, 1600, 1079, "Luna", 1300, 0, 0, true);
-    //setAdvancedPlanet(2, 0, -150000000, 0, 0, 43000000000, 696000, "Sol", 15000255, 0, 0, false);
-    //setAdvancedPlanet(3, 0, -150000000 + 66784000, 146000, 0, 106000, 6051, "Venus", 5160, 65000, 0, false);
-    //setAdvancedPlanet(4, 0, -150000000 + 250000000, 86677, 0, 13891, 2106, "Mars", 1090, 12, 2000, false);
 
     //4324000000
 
@@ -452,7 +485,10 @@ void applyBody(int i) {
     bodies[i].surfaceTemperature += ((bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature)) / 2;
     bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
     if(bodies[i].surfaceTemperature > 385) {
-        bodies[i].waterAmount -=  bodies[i].waterAmount / (timeStep / 3600);
+        int64_t waterRemovePercent = 100 - (38500 / bodies[i].waterAmount);
+        waterRemovePercent = 10 - ((100 - waterRemovePercent) / (timeStep / 3600));
+        bodies[i].atmosphereDensity += (bodies[i].waterAmount * waterRemovePercent) / bodies[i].radius;
+        bodies[i].waterAmount -=  (bodies[i].waterAmount * waterRemovePercent) / 100;
     }
 
     //bodies[i].surfaceTemperature += (bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature) / 10;
@@ -516,8 +552,7 @@ void simplePhysics(int i) {
             }
 
             if(dist - bodies[i].radius < bodies[j].radius) {
-                removeBody(i);
-                //createDebris(j, i);
+                createDebris(j, i);
             }
 
         }
@@ -525,13 +560,23 @@ void simplePhysics(int i) {
 }
 
 void removeBody(uint8_t index) {
-    // Shift elements ahead of index by 1
+    //Automatically shifts elements too
+    bool wasSimple = bodies[index].isSimple;
     bodies[index].isBeingUsed = false;
-    for(uint8_t i = index; i < maxBodies - 1; i++ ) {
-        bodies[i] = bodies[i + 1];
+    if(!wasSimple) {
+        for(uint8_t i = index; i < num_bodies + 1; i++ ) {
+            bodies[i] = bodies[i + 1];
+        }
+    } else {
+        for(uint8_t i = index; i > maxBodies - num_debris; i--) {
+            bodies[i] = bodies[i - 1];
+        }
     }
-    if(!bodies[index].isSimple) {
+    if(!wasSimple) {
         num_bodies--;
+        if(selectedIndex >= index) {
+            selectedIndex--;
+        }
     } else {
         num_debris--;
     }
@@ -606,6 +651,12 @@ void setSelectedIndexValueByUserInput() {
     else if(selectedIndex == 8) {//water
         prevVal = bodies[selectedPlanet].waterAmount;
         bodies[selectedPlanet].waterAmount = getInput(prevVal);
+    }
+    else if(selectedIndex == 10) {// New Moon
+        setAdvancedPlanet(num_bodies, bodies[selectedPlanet].x, bodies[selectedPlanet].y + bodies[selectedPlanet].radius * 10,bodies[selectedPlanet].velocityX + bodies[selectedPlanet].mass / 14, bodies[selectedPlanet].velocityY, 13891, 2106, getRandomName(), 1090, 12, 2000, false);
+    }
+    else if(selectedIndex == 11) {// Remove body
+        removeBody(selectedPlanet);
     }
 }
 
@@ -764,6 +815,12 @@ void planetInfo() {
     gfx_PrintString("CT:");
     gfx_PrintInt64_t(bodies[selectedPlanet].coreTemperature, 1);
     gfx_PrintString("K");
+
+    gfx_SetTextXY(SCREEN_X - 110, 110);
+    gfx_PrintString("Create moon");
+
+    gfx_SetTextXY(SCREEN_X - 110, 120);
+    gfx_PrintString("Remove Body");
 }
 
 // Note that this also updates the planet color in the main view
