@@ -481,12 +481,21 @@ void applyBody(int i) {
     bodies[i].x += bodies[i].velocityX * (timeStep * 1 / 3600) / 1;
     bodies[i].y += bodies[i].velocityY * (timeStep * 1 / 3600) / 1;
 
-    // TODO: Do off of timeStep! This is a temp thing
+    // TODO: Do off of timeStep
     bodies[i].surfaceTemperature += ((bodies[i].surfaceStabilizeTemperature - bodies[i].surfaceTemperature)) / 2;
     bodies[i].brightness = (((bodies[i].radius / 100) * (bodies[i].radius / 100) / 1000) * bodies[i].surfaceTemperature) / 48400;
-    if(bodies[i].surfaceTemperature > 385) {
-        int64_t waterRemovePercent = 100 - (38500 / bodies[i].waterAmount);
-        waterRemovePercent = 10 - ((100 - waterRemovePercent) / (timeStep / 3600));
+    if(bodies[i].surfaceTemperature > 365) {
+        int64_t waterRemovePercent = 99;
+        if(bodies[i].surfaceTemperature < 385) {
+            waterRemovePercent = 5;
+        } else if(bodies[i].surfaceTemperature < 400) {
+            waterRemovePercent = 15;
+        } else if(bodies[i].surfaceTemperature < 600) {
+            waterRemovePercent = 25;
+        } else {
+            waterRemovePercent = 50;
+        }
+
         bodies[i].atmosphereDensity += (bodies[i].waterAmount * waterRemovePercent) / bodies[i].radius;
         bodies[i].waterAmount -=  (bodies[i].waterAmount * waterRemovePercent) / 100;
     }
@@ -564,7 +573,7 @@ void removeBody(uint8_t index) {
     bool wasSimple = bodies[index].isSimple;
     bodies[index].isBeingUsed = false;
     if(!wasSimple) {
-        for(uint8_t i = index; i < num_bodies + 1; i++ ) {
+        for(uint8_t i = index; i < num_bodies; i++ ) {
             bodies[i] = bodies[i + 1];
         }
     } else {
@@ -572,11 +581,13 @@ void removeBody(uint8_t index) {
             bodies[i] = bodies[i - 1];
         }
     }
+
     if(!wasSimple) {
-        num_bodies--;
-        if(selectedIndex >= index) {
-            selectedIndex--;
+        if(selectedPlanet >= index && selectedPlanet != 0) {
+            selectedPlanet--;
         }
+        num_bodies--;
+
     } else {
         num_debris--;
     }
@@ -653,11 +664,13 @@ void setSelectedIndexValueByUserInput() {
         bodies[selectedPlanet].waterAmount = getInput(prevVal);
     }
     else if(selectedIndex == 10) {// New Moon
-        setAdvancedPlanet(num_bodies, bodies[selectedPlanet].x, bodies[selectedPlanet].y + bodies[selectedPlanet].radius * 10,bodies[selectedPlanet].velocityX + bodies[selectedPlanet].mass / 14, bodies[selectedPlanet].velocityY, 13891, 2106, getRandomName(), 1090, 12, 2000, false);
+        setAdvancedPlanet(num_bodies, bodies[selectedPlanet].x, bodies[selectedPlanet].y + bodies[selectedPlanet].radius * 10,bodies[selectedPlanet].velocityX + fastestSqrt64(bodies[selectedPlanet].mass) * 25, bodies[selectedPlanet].velocityY, 13891, 2106, getRandomName(), 1090, 12, 2000, false);
+        selectedPlanet = num_bodies - 1;
     }
     else if(selectedIndex == 11) {// Remove body
         removeBody(selectedPlanet);
     }
+    while((kb_Data[2] & kb_Sto)) {kb_Scan();}
 }
 
 void controls() {
@@ -810,7 +823,7 @@ void planetInfo() {
     gfx_SetTextXY(SCREEN_X - 110, 90);
     gfx_PrintString("W:");
     gfx_PrintInt(bodies[selectedPlanet].waterAmount, 1);
-
+    //bodies[selectedPlanet].waterAmount
     gfx_SetTextXY(SCREEN_X - 110, 100);
     gfx_PrintString("CT:");
     gfx_PrintInt64_t(bodies[selectedPlanet].coreTemperature, 1);
